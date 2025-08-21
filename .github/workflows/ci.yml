@@ -50,7 +50,7 @@ jobs:
         env:
           PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
         run: |
-          git clone https://x-access-token:$PRIVATE_REPO_TOKEN@github.com/PotatoOfficialTeam/flclash.git private-source
+          git clone "https://x-access-token:$PRIVATE_REPO_TOKEN@github.com/PotatoOfficialTeam/flclash.git" private-source
           
       - name: Checkout public repository
         uses: actions/checkout@v4
