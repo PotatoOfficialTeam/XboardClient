@@ -51,12 +51,32 @@ jobs:
           PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
         shell: bash
         run: |
-          # 配置Git将SSH URL重定向到HTTPS，以便使用token
-          git config --global url."https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/".insteadOf "git@github.com:"
-          git config --global url."https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/".insteadOf "https://github.com/"
+          # 只对私有仓库使用token，子模块使用公开访问
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
           
-          # 克隆私有仓库及其子模块
-          git clone --recursive "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flclash.git" private-source
+          # 先克隆主仓库（不包含子模块）
+          git clone "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flclash.git" private-source
+          
+          # 进入目录并手动处理子模块
+          cd private-source
+          
+          # 初始化子模块但不克隆
+          git submodule init
+          
+          # 手动克隆开源子模块
+          echo "🔧 克隆开源子模块..."
+          
+          # 克隆 Clash.Meta (FlClash分支)
+          git clone --depth 1 -b FlClash https://github.com/chen08209/Clash.Meta.git core/Clash.Meta
+          
+          # 克隆 flutter_xboard_sdk (已经是正确的HTTPS URL)
+          git clone --depth 1 https://github.com/PotatoOfficialTeam/flutter_xboard_sdk.git lib/sdk/flutter_xboard_sdk
+          
+          # 克隆 flutter_distributor (FlClash分支)
+          git clone --depth 1 -b FlClash https://github.com/chen08209/flutter_distributor.git plugins/flutter_distributor
+          
+          echo "✅ 所有子模块克隆完成"
+          cd ..
           
       - name: Checkout public repository
         uses: actions/checkout@v4
