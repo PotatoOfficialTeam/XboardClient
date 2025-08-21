@@ -191,6 +191,14 @@ jobs:
             echo "⚠️ 未找到 core/go.mod，跳过Go模块更新"
           fi
 
+      - name: Fix Package.resolved for macOS
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          echo "🔧 修复macOS Package.resolved文件问题..."
+          find . -name "Package.resolved" -type f -delete
+          echo "✅ 已删除所有Package.resolved文件"
+
       - name: Setup
         run: dart setup.dart ${{ matrix.platform }} ${{ matrix.arch && format('--arch {0}', matrix.arch) }} ${{ env.IS_STABLE == 'true' && '--env stable' || '' }}
 
