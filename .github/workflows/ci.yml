@@ -51,7 +51,7 @@ jobs:
           PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
         shell: bash
         run: |
-          git clone "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flclash.git" private-source
+          git clone --recursive "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flclash.git" private-source
           
       - name: Checkout public repository
         uses: actions/checkout@v4
@@ -62,149 +62,36 @@ jobs:
       # 🔥 新增：合并私有代码到构建目录
       - name: Prepare build environment
         shell: bash
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
         run: |
-          # 备份私有源码以防需要提取SDK
-          cp -r private-source private-source-backup
-          # 将私有仓库的源码复制到构建目录
+          # 将私有仓库的源码复制到构建目录（已包含所有子模块）
           cp -r private-source/* ./
-          # 如果需要保留公共仓库的某些文件（如CI配置），可以选择性复制
+          # 保留公共仓库的CI配置
           rm -rf .github
           cp -r public-repo/.github ./
-          # 下载并设置 flutter_xboard_sdk
-          echo "🔧 Setting up flutter_xboard_sdk..."
-          if [ ! -f "lib/sdk/flutter_xboard_sdk/pubspec.yaml" ]; then
-            echo "❌ flutter_xboard_sdk not found, downloading..."
-            # 创建目录结构
-            mkdir -p lib/sdk
-            
-            # 尝试多种方式下载SDK
-            SDK_DOWNLOADED=false
-            
-            # 方式1: 尝试从公开的SDK仓库下载（无需token）
-            echo "🔄 尝试从公开仓库下载..."
-            if git clone https://github.com/PotatoOfficialTeam/flutter_xboard_sdk.git temp-sdk; then
-              echo "✅ 成功从公开仓库下载"
-              # 确保目标目录不存在，然后移动
-              rm -rf lib/sdk/flutter_xboard_sdk
-              mv temp-sdk lib/sdk/flutter_xboard_sdk
-              SDK_DOWNLOADED=true
-            else
-              echo "⚠️ 公开仓库下载失败"
-            fi
-            
-            # 方式2: 如果公开仓库失败，尝试使用token下载
-            if [ "$SDK_DOWNLOADED" = false ]; then
-              echo "🔄 尝试使用token从仓库下载..."
-              if git clone "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flutter_xboard_sdk.git" temp-sdk; then
-                echo "✅ 使用token下载成功"
-                rm -rf lib/sdk/flutter_xboard_sdk
-                mv temp-sdk lib/sdk/flutter_xboard_sdk
-                SDK_DOWNLOADED=true
-              else
-                echo "⚠️ Token下载也失败"
-              fi
-            fi
-            
-            # 方式3: 从备份的私有源码中复制（如果存在）
-            if [ "$SDK_DOWNLOADED" = false ] && [ -d "private-source-backup/lib/sdk/flutter_xboard_sdk" ]; then
-              echo "🔄 从私有源码备份复制..."
-              cp -r "private-source-backup/lib/sdk/flutter_xboard_sdk" lib/sdk/
-              SDK_DOWNLOADED=true
-              echo "✅ 从备份复制成功"
-            fi
-            
-            # 方式4: 最后备用方案 - 重新克隆完整的flclash仓库获取SDK
-            if [ "$SDK_DOWNLOADED" = false ]; then
-              echo "🔄 最后尝试：重新下载完整仓库..."
-              if git clone --depth 1 "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flclash.git" temp-full-repo; then
-                if [ -d "temp-full-repo/lib/sdk/flutter_xboard_sdk" ]; then
-                  cp -r "temp-full-repo/lib/sdk/flutter_xboard_sdk" lib/sdk/
-                  rm -rf temp-full-repo
-                  SDK_DOWNLOADED=true
-                  echo "✅ 从完整仓库提取成功"
-                else
-                  echo "❌ 完整仓库中也未找到SDK"
-                fi
-              else
-                echo "❌ 无法下载完整仓库"
-              fi
-            fi
-            
-            if [ "$SDK_DOWNLOADED" = false ]; then
-              echo "❌ 所有下载方式都失败了"
-              exit 1
-            fi
-          fi
           
-          # 验证SDK是否正确设置
-          echo "🔍 验证SDK设置..."
+          # 验证关键文件是否存在
+          echo "🔍 验证构建环境..."
+          
           if [ -f "lib/sdk/flutter_xboard_sdk/pubspec.yaml" ]; then
-            echo "✅ flutter_xboard_sdk successfully set up"
-            ls -la lib/sdk/flutter_xboard_sdk/
+            echo "✅ flutter_xboard_sdk 已准备就绪"
           else
-            echo "❌ flutter_xboard_sdk setup failed"
-            echo "调试信息:"
-            echo "当前目录结构:"
-            ls -la lib/sdk/ || echo "lib/sdk 目录不存在"
-            if [ -d "lib/sdk/flutter_xboard_sdk" ]; then
-              echo "flutter_xboard_sdk 目录存在，内容:"
-              ls -la lib/sdk/flutter_xboard_sdk/
-            else
-              echo "flutter_xboard_sdk 目录不存在"
-            fi
-            echo "寻找所有可能的 pubspec.yaml:"
-            find . -name "pubspec.yaml" -type f | grep -E "(xboard|sdk)" || echo "未找到相关的 pubspec.yaml"
+            echo "❌ flutter_xboard_sdk 缺失"
             exit 1
           fi
-          # 初始化和更新Git子模块（特别是Clash.Meta）
-          echo "🔧 初始化Git子模块..."
-          if [ -f ".gitmodules" ]; then
-            echo "发现 .gitmodules 文件"
-            cat .gitmodules
-            # 初始化子模块
-            git submodule init
-            # 更新子模块（使用token访问私有仓库）
-            git config --global url."https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/".insteadOf "https://github.com/"
-            git submodule update --recursive --depth 1
-            echo "✅ 子模块初始化完成"
-          else
-            echo "⚠️ 未找到 .gitmodules 文件"
-            # 手动检查和下载核心依赖
-            if [ ! -f "core/Clash.Meta/go.mod" ]; then
-              echo "🔧 手动下载 Clash.Meta 核心..."
-              # 先删除可能存在的空目录
-              rm -rf core/Clash.Meta
-              mkdir -p core
-              # 尝试从公开仓库下载
-              if git clone --depth 1 https://github.com/MetaCubeX/mihomo.git core/Clash.Meta; then
-                echo "✅ 成功从公开仓库下载 Clash.Meta"
-              elif git clone --depth 1 "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/MetaCubeX/mihomo.git" core/Clash.Meta; then
-                echo "✅ 使用token下载 Clash.Meta 成功"
-              else
-                echo "❌ 无法下载 Clash.Meta 核心"
-                exit 1
-              fi
-            else
-              echo "✅ Clash.Meta 核心已存在"
-            fi
-          fi
           
-          # 验证核心文件
           if [ -f "core/Clash.Meta/go.mod" ]; then
-            echo "✅ Clash.Meta 核心文件验证成功"
+            echo "✅ Clash.Meta 核心已准备就绪"
           else
-            echo "❌ Clash.Meta 核心文件缺失"
-            echo "当前 core 目录结构:"
+            echo "❌ Clash.Meta 核心缺失"
             ls -la core/ || echo "core 目录不存在"
-            if [ -d "core/Clash.Meta" ]; then
-              echo "Clash.Meta 目录内容:"
-              ls -la core/Clash.Meta/
-            fi
             exit 1
           fi
           
+          echo "✅ 构建环境准备完成"
           # 清理敏感信息
-          rm -rf private-source private-source-backup public-repo temp-sdk temp-full-repo 2>/dev/null || true
+          rm -rf private-source public-repo
           
       - name: Debug directory structure
         shell: bash
