@@ -63,22 +63,54 @@ jobs:
       - name: Prepare build environment
         shell: bash
         run: |
+          # 备份私有源码以防需要提取SDK
+          cp -r private-source private-source-backup
           # 将私有仓库的源码复制到构建目录
           cp -r private-source/* ./
           # 如果需要保留公共仓库的某些文件（如CI配置），可以选择性复制
           rm -rf .github
           cp -r public-repo/.github ./
-          # 确保 flutter_xboard_sdk 路径正确存在
+          # 下载并设置 flutter_xboard_sdk
+          echo "🔧 Setting up flutter_xboard_sdk..."
           if [ ! -f "lib/sdk/flutter_xboard_sdk/pubspec.yaml" ]; then
-            echo "❌ flutter_xboard_sdk not found at expected path"
-            echo "Searching for xboard SDK..."
-            find . -name "flutter_xboard_sdk" -type d | head -5
-            find . -name "*xboard*" -type d | head -10
+            echo "❌ flutter_xboard_sdk not found, downloading..."
+            # 创建目录结构
+            mkdir -p lib/sdk
+            # 从GitHub下载SDK（假设它在同一个组织的仓库中）
+            git clone "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flutter_xboard_sdk.git" temp-sdk || {
+              echo "⚠️ 无法从独立仓库下载，尝试从主仓库的子目录..."
+              # 如果SDK在私有仓库的某个分支或子目录中，尝试不同的方法
+              if [ -d "private-source-backup/lib/sdk/flutter_xboard_sdk" ]; then
+                cp -r "private-source-backup/lib/sdk/flutter_xboard_sdk" lib/sdk/
+              else
+                # 最后的备用方案：从私有仓库的特定路径提取
+                echo "尝试从私有仓库提取SDK..."
+                git clone --depth 1 "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flclash.git" temp-full-repo
+                if [ -d "temp-full-repo/lib/sdk/flutter_xboard_sdk" ]; then
+                  cp -r "temp-full-repo/lib/sdk/flutter_xboard_sdk" lib/sdk/
+                  rm -rf temp-full-repo
+                else
+                  echo "❌ 无法找到flutter_xboard_sdk"
+                  exit 1
+                fi
+              fi
+            }
+            # 如果成功下载，移动到正确位置
+            if [ -d "temp-sdk" ]; then
+              mv temp-sdk lib/sdk/flutter_xboard_sdk
+            fi
+          fi
+          
+          # 验证SDK是否正确设置
+          if [ -f "lib/sdk/flutter_xboard_sdk/pubspec.yaml" ]; then
+            echo "✅ flutter_xboard_sdk successfully set up"
+            ls -la lib/sdk/flutter_xboard_sdk/
           else
-            echo "✅ flutter_xboard_sdk found at correct path"
+            echo "❌ flutter_xboard_sdk setup failed"
+            exit 1
           fi
           # 清理敏感信息
-          rm -rf private-source public-repo
+          rm -rf private-source private-source-backup public-repo temp-sdk temp-full-repo 2>/dev/null || true
           
       - name: Debug directory structure
         shell: bash
