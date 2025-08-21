@@ -134,11 +134,23 @@ jobs:
           fi
           
           # 验证SDK是否正确设置
+          echo "🔍 验证SDK设置..."
           if [ -f "lib/sdk/flutter_xboard_sdk/pubspec.yaml" ]; then
             echo "✅ flutter_xboard_sdk successfully set up"
             ls -la lib/sdk/flutter_xboard_sdk/
           else
             echo "❌ flutter_xboard_sdk setup failed"
+            echo "调试信息:"
+            echo "当前目录结构:"
+            ls -la lib/sdk/ || echo "lib/sdk 目录不存在"
+            if [ -d "lib/sdk/flutter_xboard_sdk" ]; then
+              echo "flutter_xboard_sdk 目录存在，内容:"
+              ls -la lib/sdk/flutter_xboard_sdk/
+            else
+              echo "flutter_xboard_sdk 目录不存在"
+            fi
+            echo "寻找所有可能的 pubspec.yaml:"
+            find . -name "pubspec.yaml" -type f | grep -E "(xboard|sdk)" || echo "未找到相关的 pubspec.yaml"
             exit 1
           fi
           # 清理敏感信息
