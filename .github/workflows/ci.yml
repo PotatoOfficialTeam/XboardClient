@@ -156,6 +156,43 @@ jobs:
             find . -name "pubspec.yaml" -type f | grep -E "(xboard|sdk)" || echo "未找到相关的 pubspec.yaml"
             exit 1
           fi
+          # 初始化和更新Git子模块（特别是Clash.Meta）
+          echo "🔧 初始化Git子模块..."
+          if [ -f ".gitmodules" ]; then
+            echo "发现 .gitmodules 文件"
+            cat .gitmodules
+            # 初始化子模块
+            git submodule init
+            # 更新子模块（使用token访问私有仓库）
+            git config --global url."https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/".insteadOf "https://github.com/"
+            git submodule update --recursive --depth 1
+            echo "✅ 子模块初始化完成"
+          else
+            echo "⚠️ 未找到 .gitmodules 文件"
+            # 手动检查和下载核心依赖
+            if [ ! -d "core/Clash.Meta" ]; then
+              echo "🔧 手动下载 Clash.Meta 核心..."
+              mkdir -p core
+              git clone --depth 1 https://github.com/MetaCubeX/mihomo.git core/Clash.Meta || \
+              git clone --depth 1 "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/MetaCubeX/mihomo.git" core/Clash.Meta
+              echo "✅ Clash.Meta 核心下载完成"
+            fi
+          fi
+          
+          # 验证核心文件
+          if [ -f "core/Clash.Meta/go.mod" ]; then
+            echo "✅ Clash.Meta 核心文件验证成功"
+          else
+            echo "❌ Clash.Meta 核心文件缺失"
+            echo "当前 core 目录结构:"
+            ls -la core/ || echo "core 目录不存在"
+            if [ -d "core/Clash.Meta" ]; then
+              echo "Clash.Meta 目录内容:"
+              ls -la core/Clash.Meta/
+            fi
+            exit 1
+          fi
+          
           # 清理敏感信息
           rm -rf private-source private-source-backup public-repo temp-sdk temp-full-repo 2>/dev/null || true
           
