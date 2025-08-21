@@ -159,6 +159,25 @@ jobs:
       - name: Get Flutter Dependency
         run: flutter pub get
 
+      - name: Generate code for flutter_xboard_sdk
+        shell: bash
+        run: |
+          echo "🔧 为flutter_xboard_sdk生成代码..."
+          if [ -d "lib/sdk/flutter_xboard_sdk" ]; then
+            cd lib/sdk/flutter_xboard_sdk
+            # 获取依赖
+            flutter pub get
+            # 运行代码生成
+            flutter packages pub run build_runner build --delete-conflicting-outputs
+            cd ../../..
+            echo "✅ flutter_xboard_sdk代码生成完成"
+          else
+            echo "⚠️ flutter_xboard_sdk目录不存在，跳过代码生成"
+          fi
+
+      - name: Generate code for main project
+        run: flutter packages pub run build_runner build --delete-conflicting-outputs
+
       - name: Update Go modules
         shell: bash
         run: |
