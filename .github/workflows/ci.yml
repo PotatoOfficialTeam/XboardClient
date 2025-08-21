@@ -51,6 +51,11 @@ jobs:
           PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
         shell: bash
         run: |
+          # 配置Git将SSH URL重定向到HTTPS，以便使用token
+          git config --global url."https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/".insteadOf "git@github.com:"
+          git config --global url."https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/".insteadOf "https://github.com/"
+          
+          # 克隆私有仓库及其子模块
           git clone --recursive "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flclash.git" private-source
           
       - name: Checkout public repository
