@@ -159,6 +159,19 @@ jobs:
       - name: Get Flutter Dependency
         run: flutter pub get
 
+      - name: Update Go modules
+        shell: bash
+        run: |
+          echo "🔧 更新Go模块依赖..."
+          if [ -f "core/go.mod" ]; then
+            cd core
+            go mod tidy
+            cd ..
+            echo "✅ Go模块依赖更新完成"
+          else
+            echo "⚠️ 未找到 core/go.mod，跳过Go模块更新"
+          fi
+
       - name: Setup
         run: dart setup.dart ${{ matrix.platform }} ${{ matrix.arch && format('--arch {0}', matrix.arch) }} ${{ env.IS_STABLE == 'true' && '--env stable' || '' }}
 
