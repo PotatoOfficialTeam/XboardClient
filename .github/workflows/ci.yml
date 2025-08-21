@@ -170,12 +170,22 @@ jobs:
           else
             echo "⚠️ 未找到 .gitmodules 文件"
             # 手动检查和下载核心依赖
-            if [ ! -d "core/Clash.Meta" ]; then
+            if [ ! -f "core/Clash.Meta/go.mod" ]; then
               echo "🔧 手动下载 Clash.Meta 核心..."
+              # 先删除可能存在的空目录
+              rm -rf core/Clash.Meta
               mkdir -p core
-              git clone --depth 1 https://github.com/MetaCubeX/mihomo.git core/Clash.Meta || \
-              git clone --depth 1 "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/MetaCubeX/mihomo.git" core/Clash.Meta
-              echo "✅ Clash.Meta 核心下载完成"
+              # 尝试从公开仓库下载
+              if git clone --depth 1 https://github.com/MetaCubeX/mihomo.git core/Clash.Meta; then
+                echo "✅ 成功从公开仓库下载 Clash.Meta"
+              elif git clone --depth 1 "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/MetaCubeX/mihomo.git" core/Clash.Meta; then
+                echo "✅ 使用token下载 Clash.Meta 成功"
+              else
+                echo "❌ 无法下载 Clash.Meta 核心"
+                exit 1
+              fi
+            else
+              echo "✅ Clash.Meta 核心已存在"
             fi
           fi
           
