@@ -76,28 +76,60 @@ jobs:
             echo "❌ flutter_xboard_sdk not found, downloading..."
             # 创建目录结构
             mkdir -p lib/sdk
-            # 从GitHub下载SDK（假设它在同一个组织的仓库中）
-            git clone "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flutter_xboard_sdk.git" temp-sdk || {
-              echo "⚠️ 无法从独立仓库下载，尝试从主仓库的子目录..."
-              # 如果SDK在私有仓库的某个分支或子目录中，尝试不同的方法
-              if [ -d "private-source-backup/lib/sdk/flutter_xboard_sdk" ]; then
-                cp -r "private-source-backup/lib/sdk/flutter_xboard_sdk" lib/sdk/
+            
+            # 尝试多种方式下载SDK
+            SDK_DOWNLOADED=false
+            
+            # 方式1: 尝试从公开的SDK仓库下载（无需token）
+            echo "🔄 尝试从公开仓库下载..."
+            if git clone https://github.com/PotatoOfficialTeam/flutter_xboard_sdk.git temp-sdk; then
+              echo "✅ 成功从公开仓库下载"
+              mv temp-sdk lib/sdk/flutter_xboard_sdk
+              SDK_DOWNLOADED=true
+            else
+              echo "⚠️ 公开仓库下载失败"
+            fi
+            
+            # 方式2: 如果公开仓库失败，尝试使用token下载
+            if [ "$SDK_DOWNLOADED" = false ]; then
+              echo "🔄 尝试使用token从仓库下载..."
+              if git clone "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flutter_xboard_sdk.git" temp-sdk; then
+                echo "✅ 使用token下载成功"
+                mv temp-sdk lib/sdk/flutter_xboard_sdk
+                SDK_DOWNLOADED=true
               else
-                # 最后的备用方案：从私有仓库的特定路径提取
-                echo "尝试从私有仓库提取SDK..."
-                git clone --depth 1 "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flclash.git" temp-full-repo
+                echo "⚠️ Token下载也失败"
+              fi
+            fi
+            
+            # 方式3: 从备份的私有源码中复制（如果存在）
+            if [ "$SDK_DOWNLOADED" = false ] && [ -d "private-source-backup/lib/sdk/flutter_xboard_sdk" ]; then
+              echo "🔄 从私有源码备份复制..."
+              cp -r "private-source-backup/lib/sdk/flutter_xboard_sdk" lib/sdk/
+              SDK_DOWNLOADED=true
+              echo "✅ 从备份复制成功"
+            fi
+            
+            # 方式4: 最后备用方案 - 重新克隆完整的flclash仓库获取SDK
+            if [ "$SDK_DOWNLOADED" = false ]; then
+              echo "🔄 最后尝试：重新下载完整仓库..."
+              if git clone --depth 1 "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flclash.git" temp-full-repo; then
                 if [ -d "temp-full-repo/lib/sdk/flutter_xboard_sdk" ]; then
                   cp -r "temp-full-repo/lib/sdk/flutter_xboard_sdk" lib/sdk/
                   rm -rf temp-full-repo
+                  SDK_DOWNLOADED=true
+                  echo "✅ 从完整仓库提取成功"
                 else
-                  echo "❌ 无法找到flutter_xboard_sdk"
-                  exit 1
+                  echo "❌ 完整仓库中也未找到SDK"
                 fi
+              else
+                echo "❌ 无法下载完整仓库"
               fi
-            }
-            # 如果成功下载，移动到正确位置
-            if [ -d "temp-sdk" ]; then
-              mv temp-sdk lib/sdk/flutter_xboard_sdk
+            fi
+            
+            if [ "$SDK_DOWNLOADED" = false ]; then
+              echo "❌ 所有下载方式都失败了"
+              exit 1
             fi
           fi
           
