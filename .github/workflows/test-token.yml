@@ -1,0 +1,30 @@
+name: Test Token
+
+on:
+  workflow_dispatch:
+  push:
+    paths: 
+      - 'test_token.py'
+
+jobs:
+  test-token:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        pip install requests
+        
+    - name: Test Token
+      env:
+        PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+      run: |
+        python test_token.py
