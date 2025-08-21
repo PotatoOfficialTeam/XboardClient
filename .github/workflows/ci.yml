@@ -68,8 +68,26 @@ jobs:
           # 如果需要保留公共仓库的某些文件（如CI配置），可以选择性复制
           rm -rf .github
           cp -r public-repo/.github ./
+          # 修复路径依赖问题 - 确保 SDK 路径存在
+          if [ ! -d "lib/sdk/flutter_xboard_sdk/pubspec.yaml" ] && [ -d "lib/xboard" ]; then
+            # 如果 xboard SDK 在不同位置，创建正确的路径结构
+            mkdir -p lib/sdk
+            if [ -d "lib/xboard" ]; then
+              mv lib/xboard lib/sdk/flutter_xboard_sdk
+            fi
+          fi
           # 清理敏感信息
           rm -rf private-source public-repo
+          
+      - name: Debug directory structure
+        shell: bash
+        run: |
+          echo "=== Current directory structure ==="
+          find . -name "pubspec.yaml" -type f | head -10
+          echo "=== lib/sdk structure ==="
+          ls -la lib/sdk/ || echo "lib/sdk does not exist"
+          echo "=== lib/xboard structure ==="
+          ls -la lib/xboard/ || echo "lib/xboard does not exist"
           
       - name: Setup Android Signing
         if: startsWith(matrix.platform,'android')
