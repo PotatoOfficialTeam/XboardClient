@@ -61,13 +61,15 @@ jobs:
 
       # 🔥 新增：合并私有代码到构建目录
       - name: Prepare build environment
+        shell: bash
         run: |
           # 将私有仓库的源码复制到构建目录
           cp -r private-source/* ./
           # 如果需要保留公共仓库的某些文件（如CI配置），可以选择性复制
+          rm -rf .github
           cp -r public-repo/.github ./
           # 清理敏感信息
-          rm -rf private-source
+          rm -rf private-source public-repo
           
       - name: Setup Android Signing
         if: startsWith(matrix.platform,'android')
