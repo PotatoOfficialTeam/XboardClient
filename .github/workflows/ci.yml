@@ -84,6 +84,8 @@ jobs:
             echo "🔄 尝试从公开仓库下载..."
             if git clone https://github.com/PotatoOfficialTeam/flutter_xboard_sdk.git temp-sdk; then
               echo "✅ 成功从公开仓库下载"
+              # 确保目标目录不存在，然后移动
+              rm -rf lib/sdk/flutter_xboard_sdk
               mv temp-sdk lib/sdk/flutter_xboard_sdk
               SDK_DOWNLOADED=true
             else
@@ -95,6 +97,7 @@ jobs:
               echo "🔄 尝试使用token从仓库下载..."
               if git clone "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flutter_xboard_sdk.git" temp-sdk; then
                 echo "✅ 使用token下载成功"
+                rm -rf lib/sdk/flutter_xboard_sdk
                 mv temp-sdk lib/sdk/flutter_xboard_sdk
                 SDK_DOWNLOADED=true
               else
