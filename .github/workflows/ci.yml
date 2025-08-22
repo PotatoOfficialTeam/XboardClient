@@ -219,9 +219,25 @@ jobs:
         with:
           fetch-depth: 0
           ref: refs/heads/main
+      - name: Download CHANGELOG from original project
+        if: ${{ env.IS_STABLE == 'true' }}
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          # Download CHANGELOG.md from the original private repository
+          curl -H "Authorization: token ${PRIVATE_REPO_TOKEN}" \
+               -H "Accept: application/vnd.github.v3.raw" \
+               -o CHANGELOG.md \
+               https://api.github.com/repos/PotatoOfficialTeam/flclash/contents/CHANGELOG.md
       - name: Generate
         if: ${{ env.IS_STABLE == 'true' }}
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
         run: |
+          # Clone the original repository to get proper git history
+          git clone "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flclash.git" original-repo
+          cd original-repo
+          
           tags=($(git tag --merged $(git rev-parse HEAD) --sort=-creatordate))
           preTag=$(grep -oP '^## \K.*' CHANGELOG.md | head -n 1)
           currentTag=""
@@ -237,19 +253,21 @@ jobs:
               fi
             fi
             if [ -n "$currentTag" ]; then
-              echo "## $currentTag" >> NEW_CHANGELOG.md
-              echo "" >> NEW_CHANGELOG.md
+              echo "## $currentTag" >> ../NEW_CHANGELOG.md
+              echo "" >> ../NEW_CHANGELOG.md
               if [ -n "$tag" ]; then
-                git log --pretty=format:"%B" "$tag..$currentTag" | awk 'NF {print "- " $0} !NF {print ""}' >> NEW_CHANGELOG.md
+                git log --pretty=format:"%B" "$tag..$currentTag" | awk 'NF {print "- " $0} !NF {print ""}' >> ../NEW_CHANGELOG.md
               else
-                git log --pretty=format:"%B" "$currentTag" | awk 'NF {print "- " $0} !NF {print ""}' >> NEW_CHANGELOG.md
+                git log --pretty=format:"%B" "$currentTag" | awk 'NF {print "- " $0} !NF {print ""}' >> ../NEW_CHANGELOG.md
               fi
-              echo "" >> NEW_CHANGELOG.md
+              echo "" >> ../NEW_CHANGELOG.md
             fi
             currentTag=$tag
           done
+          cd ..
           cat CHANGELOG.md >> NEW_CHANGELOG.md
           cat NEW_CHANGELOG.md > CHANGELOG.md
+          rm -rf original-repo
 
       - name: Commit
         if: ${{ env.IS_STABLE == 'true' }}
@@ -275,14 +293,14 @@ jobs:
     permissions: write-all
     needs: [ build ]
     runs-on: ubuntu-latest
-    services:
-      telegram-bot-api:
-        image: aiogram/telegram-bot-api:latest
-        env:
-          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-        ports:
-          - 8081:8081
+    # services:
+    #   telegram-bot-api:
+    #     image: aiogram/telegram-bot-api:latest
+    #     env:
+    #       TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+    #       TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+    #     ports:
+    #       - 8081:8081
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -297,7 +315,13 @@ jobs:
           merge-multiple: true
 
       - name: Generate release.md
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
         run: |
+          # Clone the original repository to get proper git history for release notes
+          git clone "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flclash.git" original-repo
+          cd original-repo
+          
           tags=($(git tag --merged $(git rev-parse HEAD) --sort=-creatordate))
           preTag=$(curl --silent "https://api.github.com/repos/chen08209/FlClash/releases/latest" | grep -Po '"tag_name": "\K.*?(?=")' || echo "")
           currentTag=""
@@ -314,24 +338,26 @@ jobs:
             fi
             if [ -n "$currentTag" ]; then
               if [ -n "$tag" ]; then
-                git log --pretty=format:"%B" "$tag..$currentTag" | awk 'NF {print "- " $0} !NF {print ""}' >> release.md
+                git log --pretty=format:"%B" "$tag..$currentTag" | awk 'NF {print "- " $0} !NF {print ""}' >> ../release.md
               else
-                git log --pretty=format:"%B" "$currentTag" | awk 'NF {print "- " $0} !NF {print ""}' >> release.md
+                git log --pretty=format:"%B" "$currentTag" | awk 'NF {print "- " $0} !NF {print ""}' >> ../release.md
               fi
-              echo "" >> release.md
+              echo "" >> ../release.md
             fi
             currentTag=$tag
           done
+          cd ..
+          rm -rf original-repo
 
-      - name: Push to telegram
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TAG: ${{ github.ref_name }}
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests
-          python release_telegram.py
+      # - name: Push to telegram
+      #   env:
+      #     TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      #     TAG: ${{ github.ref_name }}
+      #     RUN_ID: ${{ github.run_id }}
+      #   run: |
+      #     python -m pip install --upgrade pip
+      #     pip install requests
+      #     python release_telegram.py
 
       - name: Patch release.md
         run: |
