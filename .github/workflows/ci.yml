@@ -118,6 +118,35 @@ jobs:
           # 清理敏感信息
           rm -rf private-source public-repo
           
+      # 🔥 新增：针对邀请码 lc6WRbRg 的多品牌构建
+      - name: Apply multi-brand configuration
+        shell: bash
+        run: |
+          echo "🔧 应用多品牌配置..."
+          # 检查是否为特定分支或标签
+          if [[ "${{ github.ref }}" == *"wujie_lc6WRbRg"* ]]; then
+            echo "检测到邀请码 lc6WRbRg，开始应用配置..."
+            
+            # 检查多品牌构建器是否存在
+            if [ -f ".github/flclash-multi-brand-builder/multi_brand_builder_v2.py" ]; then
+              echo "✅ 找到多品牌构建器"
+              
+              # 设置Python环境
+              python3 -c "import sys; print(f'Python version: {sys.version}')"
+              
+              # 运行多品牌构建器
+              echo "运行命令: python3 .github/flclash-multi-brand-builder/multi_brand_builder_v2.py . wujie invite lc6WRbRg"
+              python3 .github/flclash-multi-brand-builder/multi_brand_builder_v2.py . wujie invite lc6WRbRg
+              
+              echo "✅ 多品牌配置应用完成"
+            else
+              echo "❌ 未找到多品牌构建器，跳过配置"
+              ls -la .github/ || echo ".github目录不存在"
+            fi
+          else
+            echo "不是邀请码分支，跳过多品牌配置"
+          fi
+          
       - name: Debug directory structure
         shell: bash
         run: |
