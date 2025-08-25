@@ -118,35 +118,6 @@ jobs:
           # 清理敏感信息
           rm -rf private-source public-repo
           
-      # 🔥 新增：针对邀请码 lc6WRbRg 的多品牌构建
-      - name: Apply multi-brand configuration
-        shell: bash
-        run: |
-          echo "🔧 应用多品牌配置..."
-          # 检查是否为特定分支或标签
-          if [[ "${{ github.ref }}" == *"wujie_lc6WRbRg"* ]]; then
-            echo "检测到邀请码 lc6WRbRg，开始应用配置..."
-            
-            # 检查多品牌构建器是否存在
-            if [ -f ".github/flclash-multi-brand-builder/multi_brand_builder_v2.py" ]; then
-              echo "✅ 找到多品牌构建器"
-              
-              # 设置Python环境
-              python3 -c "import sys; print(f'Python version: {sys.version}')"
-              
-              # 运行多品牌构建器
-              echo "运行命令: python3 .github/flclash-multi-brand-builder/multi_brand_builder_v2.py . wujie invite lc6WRbRg"
-              python3 .github/flclash-multi-brand-builder/multi_brand_builder_v2.py . wujie invite lc6WRbRg
-              
-              echo "✅ 多品牌配置应用完成"
-            else
-              echo "❌ 未找到多品牌构建器，跳过配置"
-              ls -la .github/ || echo ".github目录不存在"
-            fi
-          else
-            echo "不是邀请码分支，跳过多品牌配置"
-          fi
-          
       - name: Debug directory structure
         shell: bash
         run: |
@@ -409,7 +380,76 @@ jobs:
           for file in $(find . -type f -not -name "*.sha256"); do
             sha256sum "$file" > "${file}.sha256"
           done  
+      - name: Sync and Release to Gitee
+        if: env.IS_STABLE == 'true'
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_ACCESS_TOKEN }}
+          GITEE_OWNER: ${{ secrets.GITEE_REPO_OWNER }}
+          GITEE_REPO: ${{ secrets.GITEE_REPO_NAME }}
+          TAG_NAME: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          echo "🚀 Starting to sync and release to Gitee..."
 
+          # ----------------------------------------------------------------
+          # 步骤 1: 同步 Git 标签到 Gitee 仓库
+          # ----------------------------------------------------------------
+          echo "🔧 Syncing git tag '${TAG_NAME}' to Gitee..."
+          git remote add gitee "https://x-access-token:${GITEE_TOKEN}@gitee.com/${GITEE_OWNER}/${GITEE_REPO}.git"
+          git push gitee "refs/tags/${TAG_NAME}" --force
+          
+          if [ $? -ne 0 ]; then
+            echo "❌ Failed to push tag to Gitee. Aborting."
+            exit 1
+          fi
+          echo "✅ Git tag synced successfully."
+
+          # ----------------------------------------------------------------
+          # 步骤 2: 调用 Gitee API 创建发行版 (Release)
+          # ----------------------------------------------------------------
+          echo "📝 Creating Gitee release for tag '${TAG_NAME}'..."
+          
+          # 准备 JSON 数据，body 字段为空
+          JSON_DATA=$(printf '{"access_token": "%s", "tag_name": "%s", "name": "%s", "body": "", "prerelease": false}' \
+            "$GITEE_TOKEN" \
+            "$TAG_NAME" \
+            "$TAG_NAME")
+
+          # 发送API请求来创建Release
+          CREATE_RELEASE_RESPONSE=$(curl -s -X POST \
+            "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases" \
+            -H "Content-Type: application/json" \
+            -d "$JSON_DATA")
+
+          if ! echo "$CREATE_RELEASE_RESPONSE" | grep -q '"id"'; then
+            echo "❌ Failed to create Gitee release."
+            echo "Gitee API Response: $CREATE_RELEASE_RESPONSE"
+            exit 1
+          fi
+          echo "✅ Gitee release created successfully."
+
+          # ----------------------------------------------------------------
+          # 步骤 3: 循环上传构建产物 (Artifacts)
+          # ----------------------------------------------------------------
+          echo "📦 Uploading artifacts to Gitee release..."
+          
+          for file in ./dist/*; do
+            if [ -f "$file" ]; then
+              echo "  Uploading ${file}..."
+              UPLOAD_RESPONSE=$(curl -s -X POST \
+                "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${TAG_NAME}/attach_files?access_token=${GITEE_TOKEN}" \
+                -F "file=@${file}")
+              
+              if ! echo "$UPLOAD_RESPONSE" | grep -q '"download_url"'; then
+                echo "  ❌ Failed to upload ${file}."
+                echo "  Gitee API Response: $UPLOAD_RESPONSE"
+              else
+                echo "  ✅ Successfully uploaded ${file}."
+              fi
+            fi
+          done
+          
+          echo "🎉 Gitee release process finished."
       - name: Release
         if: ${{ env.IS_STABLE == 'true' }}
         uses: softprops/action-gh-release@v2
