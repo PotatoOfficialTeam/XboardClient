@@ -410,7 +410,7 @@ jobs:
           echo "📝 Creating Gitee release for tag '${TAG_NAME}'..."
           
           # 准备 JSON 数据，添加 target_commitish 参数
-          JSON_DATA=$(printf '{"access_token": "%s", "tag_name": "%s", "name": "%s", "body": "", "target_commitish": "main", "prerelease": false}' \
+          JSON_DATA=$(printf '{"access_token": "%s", "tag_name": "%s", "name": "%s", "body": "应用程序最新版本发布", "target_commitish": "main", "prerelease": false}' \
             "$GITEE_TOKEN" \
             "$TAG_NAME" \
             "$TAG_NAME")
