@@ -395,7 +395,7 @@ jobs:
           # 步骤 1: 同步 Git 标签到 Gitee 仓库
           # ----------------------------------------------------------------
           echo "🔧 Syncing git tag '${TAG_NAME}' to Gitee..."
-          git remote add gitee "git remote add gitee "https://${GITEE_OWNER}:${GITEE_TOKEN}@gitee.com/${GITEE_OWNER}/${GITEE_REPO}.git""
+          git remote add gitee "https://${GITEE_OWNER}:${GITEE_TOKEN}@gitee.com/${GITEE_OWNER}/${GITEE_REPO}.git"
           git push gitee "refs/tags/${TAG_NAME}" --force
           
           if [ $? -ne 0 ]; then
