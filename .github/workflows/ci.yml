@@ -380,53 +380,6 @@ jobs:
           for file in $(find . -type f -not -name "*.sha256"); do
             sha256sum "$file" > "${file}.sha256"
           done  
-      - name: Upload artifacts to Gitee repository
-        if: env.IS_STABLE == 'true'
-        env:
-          GITEE_TOKEN: ${{ secrets.GITEE_ACCESS_TOKEN }}
-          GITEE_OWNER: ${{ secrets.GITEE_REPO_OWNER }}
-          GITEE_REPO: ${{ secrets.GITEE_REPO_NAME }}
-          TAG_NAME: ${{ github.ref_name }}
-        shell: bash
-        run: |
-          echo "🚀 Starting to upload artifacts to Gitee repository..."
-
-          # ----------------------------------------------------------------
-          # 步骤 1: 克隆 Gitee 仓库
-          # ----------------------------------------------------------------
-          echo "🔧 Cloning Gitee repository..."
-          git clone "https://${GITEE_OWNER}:${GITEE_TOKEN}@gitee.com/${GITEE_OWNER}/${GITEE_REPO}.git" gitee-repo
-          cd gitee-repo
-          
-          # 创建 releases 目录
-          mkdir -p releases/${TAG_NAME}
-          
-          # ----------------------------------------------------------------
-          # 步骤 2: 复制构建产物到仓库
-          # ----------------------------------------------------------------
-          echo "📦 Copying artifacts to releases/${TAG_NAME}..."
-          cp -r ../dist/* releases/${TAG_NAME}/
-          
-          # ----------------------------------------------------------------
-          # 步骤 3: 提交并推送到 Gitee
-          # ----------------------------------------------------------------
-          echo "📤 Committing and pushing to Gitee..."
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add releases/${TAG_NAME}
-          git commit -m "Add release artifacts for ${TAG_NAME}"
-          
-          # 设置超时并推送，显示推送进度
-          echo "🔄 Pushing to Gitee with timeout and progress..."
-          timeout 300s git push origin master --progress --verbose || {
-            echo "❌ Push to Gitee timed out or failed"
-            echo "ℹ️  This might be due to network issues or repository permissions"
-            echo "⏭️  Continuing with GitHub release..."
-            exit 0
-          }
-          
-          echo "✅ Artifacts uploaded to Gitee repository successfully."
-          echo "📁 Files are now available at: releases/${TAG_NAME}/"
       - name: Release
         if: ${{ env.IS_STABLE == 'true' }}
         uses: softprops/action-gh-release@v2
