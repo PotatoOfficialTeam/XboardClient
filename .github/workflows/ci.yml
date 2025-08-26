@@ -380,7 +380,7 @@ jobs:
           for file in $(find . -type f -not -name "*.sha256"); do
             sha256sum "$file" > "${file}.sha256"
           done  
-      - name: Sync and Release to Gitee
+      - name: Upload artifacts to Gitee repository
         if: env.IS_STABLE == 'true'
         env:
           GITEE_TOKEN: ${{ secrets.GITEE_ACCESS_TOKEN }}
@@ -389,67 +389,36 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         shell: bash
         run: |
-          echo "🚀 Starting to sync and release to Gitee..."
+          echo "🚀 Starting to upload artifacts to Gitee repository..."
 
           # ----------------------------------------------------------------
-          # 步骤 1: 同步 Git 标签到 Gitee 仓库
+          # 步骤 1: 克隆 Gitee 仓库
           # ----------------------------------------------------------------
-          echo "🔧 Syncing git tag '${TAG_NAME}' to Gitee..."
-          git remote add gitee "https://${GITEE_OWNER}:${GITEE_TOKEN}@gitee.com/${GITEE_OWNER}/${GITEE_REPO}.git"
-          git push gitee "refs/tags/${TAG_NAME}" --force
+          echo "🔧 Cloning Gitee repository..."
+          git clone "https://${GITEE_OWNER}:${GITEE_TOKEN}@gitee.com/${GITEE_OWNER}/${GITEE_REPO}.git" gitee-repo
+          cd gitee-repo
           
-          if [ $? -ne 0 ]; then
-            echo "❌ Failed to push tag to Gitee. Aborting."
-            exit 1
-          fi
-          echo "✅ Git tag synced successfully."
-
-          # ----------------------------------------------------------------
-          # 步骤 2: 调用 Gitee API 创建发行版 (Release)
-          # ----------------------------------------------------------------
-          echo "📝 Creating Gitee release for tag '${TAG_NAME}'..."
+          # 创建 releases 目录
+          mkdir -p releases/${TAG_NAME}
           
-          # 准备 JSON 数据，添加 target_commitish 参数
-          JSON_DATA=$(printf '{"access_token": "%s", "tag_name": "%s", "name": "%s", "body": "应用程序最新版本发布", "target_commitish": "main", "prerelease": false}' \
-            "$GITEE_TOKEN" \
-            "$TAG_NAME" \
-            "$TAG_NAME")
-
-          # 发送API请求来创建Release
-          CREATE_RELEASE_RESPONSE=$(curl -s -X POST \
-            "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases" \
-            -H "Content-Type: application/json" \
-            -d "$JSON_DATA")
-
-          if ! echo "$CREATE_RELEASE_RESPONSE" | grep -q '"id"'; then
-            echo "❌ Failed to create Gitee release."
-            echo "Gitee API Response: $CREATE_RELEASE_RESPONSE"
-            exit 1
-          fi
-          echo "✅ Gitee release created successfully."
-
           # ----------------------------------------------------------------
-          # 步骤 3: 循环上传构建产物 (Artifacts)
+          # 步骤 2: 复制构建产物到仓库
           # ----------------------------------------------------------------
-          echo "📦 Uploading artifacts to Gitee release..."
+          echo "📦 Copying artifacts to releases/${TAG_NAME}..."
+          cp -r ../dist/* releases/${TAG_NAME}/
           
-          for file in ./dist/*; do
-            if [ -f "$file" ]; then
-              echo "  Uploading ${file}..."
-              UPLOAD_RESPONSE=$(curl -s -X POST \
-                "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${TAG_NAME}/attach_files?access_token=${GITEE_TOKEN}" \
-                -F "file=@${file}")
-              
-              if ! echo "$UPLOAD_RESPONSE" | grep -q '"download_url"'; then
-                echo "  ❌ Failed to upload ${file}."
-                echo "  Gitee API Response: $UPLOAD_RESPONSE"
-              else
-                echo "  ✅ Successfully uploaded ${file}."
-              fi
-            fi
-          done
+          # ----------------------------------------------------------------
+          # 步骤 3: 提交并推送到 Gitee
+          # ----------------------------------------------------------------
+          echo "📤 Committing and pushing to Gitee..."
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add releases/${TAG_NAME}
+          git commit -m "Add release artifacts for ${TAG_NAME}"
+          git push origin main
           
-          echo "🎉 Gitee release process finished."
+          echo "✅ Artifacts uploaded to Gitee repository successfully."
+          echo "📁 Files are now available at: releases/${TAG_NAME}/"
       - name: Release
         if: ${{ env.IS_STABLE == 'true' }}
         uses: softprops/action-gh-release@v2
