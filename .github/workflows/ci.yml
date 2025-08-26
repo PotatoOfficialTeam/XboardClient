@@ -416,9 +416,9 @@ jobs:
           git add releases/${TAG_NAME}
           git commit -m "Add release artifacts for ${TAG_NAME}"
           
-          # 设置超时并推送
-          echo "🔄 Pushing to Gitee with timeout..."
-          timeout 300s git push origin master || {
+          # 设置超时并推送，显示推送进度
+          echo "🔄 Pushing to Gitee with timeout and progress..."
+          timeout 300s git push origin master --progress --verbose || {
             echo "❌ Push to Gitee timed out or failed"
             echo "ℹ️  This might be due to network issues or repository permissions"
             echo "⏭️  Continuing with GitHub release..."
