@@ -18,7 +18,7 @@ jobs:
           - platform: android
             os: ubuntu-latest
           - platform: windows
-            os: windows-latest
+            os: windows-2022
             arch: amd64
           - platform: linux
             os: ubuntu-22.04
@@ -44,7 +44,6 @@ jobs:
           .\rustup-init.exe -y --default-toolchain stable
           $cargoPath = "$env:USERPROFILE\.cargo\bin"
           Add-Content $env:GITHUB_PATH $cargoPath
-
       # 🔥 新增：拉取私有仓库代码
       - name: Clone private repository
         env:
@@ -135,14 +134,12 @@ jobs:
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/local.properties
           echo "storePassword=${{ secrets.STORE_PASSWORD }}" >> android/local.properties
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/local.properties
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.24.0'
           cache-dependency-path: |
             core/go.sum
-
       - name: Setup Flutter Master
         if: startsWith(matrix.os, 'windows-11-arm') || startsWith(matrix.os, 'ubuntu-24.04-arm')
         uses: subosito/flutter-action@v2
@@ -174,7 +171,6 @@ jobs:
           else
             echo "⚠️ flutter_xboard_sdk目录不存在，跳过代码生成"
           fi
-
       - name: Generate code for main project
         run: flutter packages pub run build_runner build --delete-conflicting-outputs
 
@@ -190,7 +186,6 @@ jobs:
           else
             echo "⚠️ 未找到 core/go.mod，跳过Go模块更新"
           fi
-
       - name: Fix Package.resolved for macOS
         if: matrix.platform == 'macos'
         shell: bash
@@ -198,7 +193,6 @@ jobs:
           echo "🔧 修复macOS Package.resolved文件问题..."
           find . -name "Package.resolved" -type f -delete
           echo "✅ 已删除所有Package.resolved文件"
-
       - name: Setup
         run: dart setup.dart ${{ matrix.platform }} ${{ matrix.arch && format('--arch {0}', matrix.arch) }} ${{ env.IS_STABLE == 'true' && '--env stable' || '' }}
 
@@ -269,7 +263,6 @@ jobs:
           cat CHANGELOG.md >> NEW_CHANGELOG.md
           cat NEW_CHANGELOG.md > CHANGELOG.md
           rm -rf original-repo
-
       - name: Commit
         if: ${{ env.IS_STABLE == 'true' }}
         env:
@@ -289,7 +282,6 @@ jobs:
               exit 1
             fi
           fi
-
   upload:
     permissions: write-all
     needs: [ build ]
@@ -349,7 +341,6 @@ jobs:
           done
           cd ..
           rm -rf original-repo
-
       # - name: Push to telegram
       #   env:
       #     TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -372,7 +363,6 @@ jobs:
           
           version=$(echo "${{ github.ref_name }}" | sed 's/^v//')
           sed "s|VERSION|$version|g" release_template.md >> release.md
-
       - name: Generate sha256
         if: env.IS_STABLE == 'true'
         run: |
