@@ -23,7 +23,7 @@ on:
 env:
   IS_STABLE: ${{ !contains(github.ref, '-') }}
   SOURCE_BRANCH: ${{ github.event.inputs.source_branch || 'main' }}
-  VERSION_TAG: ${{ github.event.inputs.version_tag || github.ref_name }}
+  VERSION_TAG: ${{ github.event.inputs.version_tag || '' }}
 
 jobs:
   build:
@@ -343,12 +343,12 @@ jobs:
                https://api.github.com/repos/PotatoOfficialTeam/flclash/contents/.github/release_template.md
           
           # 使用自定义版本标签或github ref，并添加分支信息
-          if [ -n "${{ env.VERSION_TAG }}" ] && [ "${{ env.VERSION_TAG }}" != "${{ github.ref_name }}" ]; then
+          if [ -n "${{ env.VERSION_TAG }}" ]; then
             version=$(echo "${{ env.VERSION_TAG }}" | sed 's/^v//')
             echo -e "\n---\n**构建分支**: ${{ env.SOURCE_BRANCH }}\n**版本标签**: ${{ env.VERSION_TAG }}\n" >> release.md
           else
             version=$(echo "${{ github.ref_name }}" | sed 's/^v//')
-            echo -e "\n---\n**构建分支**: ${{ env.SOURCE_BRANCH }}\n" >> release.md
+            echo -e "\n---\n**构建分支**: ${{ env.SOURCE_BRANCH }}\n**触发标签**: ${{ github.ref_name }}\n" >> release.md
           fi
           sed "s|VERSION|$version|g" release_template.md >> release.md
       - name: Generate sha256
@@ -365,6 +365,8 @@ jobs:
           files: ./dist/*
           body_path: './release.md'
           generate_release_notes: false
+          tag_name: ${{ env.VERSION_TAG || github.ref_name }}
+          name: ${{ env.VERSION_TAG || github.ref_name }}
 
       # - name: Create Fdroid Source Dir
       #   if: ${{ env.IS_STABLE == 'true' }}
