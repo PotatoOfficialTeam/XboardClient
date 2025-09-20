@@ -5,9 +5,25 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:  # 允许手动触发
+    inputs:
+      source_branch:
+        description: '选择要打包的分支'
+        required: true
+        default: 'main'
+        type: choice
+        options:
+        - main
+        - v2word
+        - wujie_lc6WRbRg
+      version_tag:
+        description: '版本标签 (可选，用于发布)'
+        required: false
+        type: string
 
 env:
   IS_STABLE: ${{ !contains(github.ref, '-') }}
+  SOURCE_BRANCH: ${{ github.event.inputs.source_branch || 'main' }}
+  VERSION_TAG: ${{ github.event.inputs.version_tag || github.ref_name }}
 
 jobs:
   build:
@@ -53,8 +69,9 @@ jobs:
           # 只对私有仓库使用token，子模块使用公开访问
           git config --global url."https://github.com/".insteadOf "git@github.com:"
           
-          # 先克隆主仓库（不包含子模块）
-          git clone "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flclash.git" private-source
+          # 先克隆主仓库（不包含子模块），使用指定分支
+          echo "📦 克隆分支: ${{ env.SOURCE_BRANCH }}"
+          git clone -b "${{ env.SOURCE_BRANCH }}" "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flclash.git" private-source
           
           # 进入目录并手动处理子模块
           cd private-source
@@ -90,11 +107,12 @@ jobs:
           PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
         run: |
           # 将私有仓库的源码复制到构建目录（已包含所有子模块）
+          echo "📋 使用分支: ${{ env.SOURCE_BRANCH }}"
           cp -r private-source/* ./
           # 保留公共仓库的CI配置
           rm -rf .github
           cp -r public-repo/.github ./
-          
+
           # 验证关键文件是否存在
           echo "🔍 验证构建环境..."
           
@@ -199,7 +217,7 @@ jobs:
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: artifact-${{ matrix.platform }}${{ matrix.arch && format('-{0}', matrix.arch) }}
+          name: artifact-${{ env.SOURCE_BRANCH }}-${{ matrix.platform }}${{ matrix.arch && format('-{0}', matrix.arch) }}
           path: ./dist
           overwrite: true
 
@@ -265,7 +283,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: ./dist/
-          pattern: artifact-*
+          pattern: artifact-${{ env.SOURCE_BRANCH }}-*
           merge-multiple: true
 
       - name: Generate release.md
@@ -273,7 +291,9 @@ jobs:
           PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
         run: |
           # Clone the original repository to get proper git history for release notes
-          git clone "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flclash.git" original-repo
+          # 总是使用源分支获取对应的发布说明
+          echo "📦 为release notes克隆分支: ${{ env.SOURCE_BRANCH }}"
+          git clone -b "${{ env.SOURCE_BRANCH }}" "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flclash.git" original-repo
           cd original-repo
           
           tags=($(git tag --merged $(git rev-parse HEAD) --sort=-creatordate))
@@ -322,7 +342,14 @@ jobs:
                -o release_template.md \
                https://api.github.com/repos/PotatoOfficialTeam/flclash/contents/.github/release_template.md
           
-          version=$(echo "${{ github.ref_name }}" | sed 's/^v//')
+          # 使用自定义版本标签或github ref，并添加分支信息
+          if [ -n "${{ env.VERSION_TAG }}" ] && [ "${{ env.VERSION_TAG }}" != "${{ github.ref_name }}" ]; then
+            version=$(echo "${{ env.VERSION_TAG }}" | sed 's/^v//')
+            echo -e "\n---\n**构建分支**: ${{ env.SOURCE_BRANCH }}\n**版本标签**: ${{ env.VERSION_TAG }}\n" >> release.md
+          else
+            version=$(echo "${{ github.ref_name }}" | sed 's/^v//')
+            echo -e "\n---\n**构建分支**: ${{ env.SOURCE_BRANCH }}\n" >> release.md
+          fi
           sed "s|VERSION|$version|g" release_template.md >> release.md
       - name: Generate sha256
         if: env.IS_STABLE == 'true'
