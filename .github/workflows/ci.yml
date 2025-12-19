@@ -1,0 +1,358 @@
+name: build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:  # 允许手动触发
+    inputs:
+      source_branch:
+        description: '选择要打包的分支'
+        required: true
+        default: 'main'
+        type: choice
+        options:
+        - main
+        - v2word
+        - wujie_lc6WRbRg
+      version_tag:
+        description: '版本标签 (可选，用于发布)'
+        required: false
+        type: string
+
+env:
+  IS_STABLE: ${{ !contains(github.ref, '-') }}
+  SOURCE_BRANCH: ${{ github.event.inputs.source_branch || 'main' }}
+  VERSION_TAG: ${{ github.event.inputs.version_tag || '' }}
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - platform: android
+            os: ubuntu-latest
+          - platform: windows
+            os: windows-2022
+            arch: amd64
+          - platform: linux
+            os: ubuntu-22.04
+            arch: amd64
+          - platform: macos
+            os: macos-15-intel
+            arch: amd64
+          - platform: macos
+            os: macos-latest
+            arch: arm64
+          - platform: windows
+            os: windows-11-arm
+            arch: arm64
+          - platform: linux
+            os: ubuntu-24.04-arm
+            arch: arm64
+
+    steps:
+      - name: Free disk space (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          df -h
+      - name: Setup rust
+        if: startsWith(matrix.os, 'windows-11-arm')
+        run: |
+          Invoke-WebRequest -Uri "https://win.rustup.rs/aarch64" -OutFile rustup-init.exe
+          .\rustup-init.exe -y --default-toolchain stable
+          $cargoPath = "$env:USERPROFILE\.cargo\bin"
+          Add-Content $env:GITHUB_PATH $cargoPath
+      # 🔥 新增：拉取私有仓库代码
+      - name: Clone private repository
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        shell: bash
+        run: |
+          # 只对私有仓库使用token，子模块使用公开访问
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          
+          # 先克隆主仓库（不包含子模块），使用指定分支
+          echo "📦 克隆分支: ${{ env.SOURCE_BRANCH }}"
+          git clone -b "${{ env.SOURCE_BRANCH }}" "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/PotatoOfficialTeam/flclash.git" private-source
+          
+          # 进入目录并手动处理子模块
+          cd private-source
+          
+          # 初始化子模块但不克隆
+          git submodule init
+          
+          # 手动克隆开源子模块
+          echo "🔧 克隆开源子模块..."
+          
+          # 克隆 Clash.Meta (FlClash分支)
+          git clone --depth 1 -b FlClash https://github.com/chen08209/Clash.Meta.git core/Clash.Meta
+          
+          # 克隆 flutter_xboard_sdk (公开仓库)
+          git clone --depth 1 https://github.com/hakimi-x/flutter_xboard_sdk.git lib/sdk/flutter_xboard_sdk
+          
+          # 克隆 flutter_distributor (FlClash分支)
+          git clone --depth 1 -b FlClash https://github.com/chen08209/flutter_distributor.git plugins/flutter_distributor
+          
+          echo "✅ 所有子模块克隆完成"
+          cd ..
+          
+      - name: Checkout public repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          path: public-repo
+
+      # 🔥 新增：合并私有代码到构建目录
+      - name: Prepare build environment
+        shell: bash
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          # 将私有仓库的源码复制到构建目录（已包含所有子模块）
+          echo "📋 使用分支: ${{ env.SOURCE_BRANCH }}"
+          cp -r private-source/* ./
+          # 保留公共仓库的CI配置
+          rm -rf .github
+          cp -r public-repo/.github ./
+
+          # 验证关键文件是否存在
+          echo "🔍 验证构建环境..."
+          
+          if [ -f "lib/sdk/flutter_xboard_sdk/pubspec.yaml" ]; then
+            echo "✅ flutter_xboard_sdk 已准备就绪"
+          else
+            echo "❌ flutter_xboard_sdk 缺失"
+            exit 1
+          fi
+          
+          if [ -f "core/Clash.Meta/go.mod" ]; then
+            echo "✅ Clash.Meta 核心已准备就绪"
+          else
+            echo "❌ Clash.Meta 核心缺失"
+            ls -la core/ || echo "core 目录不存在"
+            exit 1
+          fi
+          
+          echo "✅ 构建环境准备完成"
+          # 清理敏感信息
+          rm -rf private-source public-repo
+          
+      - name: Debug directory structure
+        shell: bash
+        run: |
+          echo "=== Current directory structure ==="
+          find . -name "pubspec.yaml" -type f | head -10
+          echo "=== lib/sdk structure ==="
+          ls -la lib/sdk/ || echo "lib/sdk does not exist"
+          echo "=== lib/xboard structure ==="
+          ls -la lib/xboard/ || echo "lib/xboard does not exist"
+          
+      - name: Setup Android Signing
+        if: startsWith(matrix.platform,'android')
+        run: |
+          echo "${{ secrets.KEYSTORE }}" | base64 --decode > android/app/keystore.jks
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/local.properties
+          echo "storePassword=${{ secrets.STORE_PASSWORD }}" >> android/local.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/local.properties
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.0'
+          cache-dependency-path: |
+            core/go.sum
+      - name: Setup Flutter (ARM)
+        if: matrix.arch == 'arm64'
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.0'
+          channel: 'master'
+          cache: true
+      - name: Setup Flutter (AMD64)
+        if: matrix.arch != 'arm64'
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.6'
+          channel: 'stable'
+          cache: true
+
+      - name: Get Flutter Dependency
+        run: flutter pub get
+
+      - name: Generate code for flutter_xboard_sdk
+        shell: bash
+        run: |
+          echo "🔧 为flutter_xboard_sdk生成代码..."
+          if [ -d "lib/sdk/flutter_xboard_sdk" ]; then
+            cd lib/sdk/flutter_xboard_sdk
+            # 获取依赖
+            flutter pub get
+            # 运行代码生成
+            flutter packages pub run build_runner build --delete-conflicting-outputs
+            cd ../../..
+            echo "✅ flutter_xboard_sdk代码生成完成"
+          else
+            echo "⚠️ flutter_xboard_sdk目录不存在，跳过代码生成"
+          fi
+      - name: Generate code for main project
+        run: flutter packages pub run build_runner build --delete-conflicting-outputs
+
+      - name: Update Go modules
+        shell: bash
+        run: |
+          echo "🔧 更新Go模块依赖..."
+          if [ -f "core/go.mod" ]; then
+            cd core
+            go mod tidy
+            cd ..
+            echo "✅ Go模块依赖更新完成"
+          else
+            echo "⚠️ 未找到 core/go.mod，跳过Go模块更新"
+          fi
+      - name: Fix Package.resolved for macOS
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          echo "🔧 修复macOS Package.resolved文件问题..."
+          find . -name "Package.resolved" -type f -delete
+          echo "✅ 已删除所有Package.resolved文件"
+      - name: Setup
+        run: dart setup.dart ${{ matrix.platform }} ${{ matrix.arch && format('--arch {0}', matrix.arch) }} ${{ env.IS_STABLE == 'true' && '--env stable' || '' }}
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact-${{ env.SOURCE_BRANCH }}-${{ matrix.platform }}${{ matrix.arch && format('-{0}', matrix.arch) }}
+          path: ./dist
+          overwrite: true
+
+  changelog:
+    permissions: write-all
+    runs-on: ubuntu-latest
+    needs: [ build ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        if: ${{ env.IS_STABLE == 'true' }}
+        with:
+          fetch-depth: 0
+          ref: refs/heads/main
+      - name: Download CHANGELOG from original project
+        if: ${{ env.IS_STABLE == 'true' }}
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          # Download CHANGELOG.md from the original private repository
+          curl -H "Authorization: token ${PRIVATE_REPO_TOKEN}" \
+               -H "Accept: application/vnd.github.v3.raw" \
+               -o CHANGELOG.md \
+               https://api.github.com/repos/PotatoOfficialTeam/flclash/contents/CHANGELOG.md
+      - name: Commit
+        if: ${{ env.IS_STABLE == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git add CHANGELOG.md
+          if ! git diff --cached --quiet; then
+            echo "Commit pushing"
+            git config --local user.email "xxxx@gmail.com"
+            git config --local user.name "xxxx"
+            git commit -m "Update changelog"
+            git push https://x-access-token:${GITHUB_TOKEN}@github.com/PotatoOfficialTeam/XboardClient.git main
+            if [ $? -eq 0 ]; then
+              echo "Push succeeded"
+            else
+              echo "Push failed"
+              exit 1
+            fi
+          fi
+  upload:
+    permissions: write-all
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    # services:
+    #   telegram-bot-api:
+    #     image: aiogram/telegram-bot-api:latest
+    #     env:
+    #       TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+    #       TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+    #     ports:
+    #       - 8081:8081
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download
+        uses: actions/download-artifact@v4
+        with:
+          path: ./dist/
+          pattern: artifact-${{ env.SOURCE_BRANCH }}-*
+          merge-multiple: true
+
+      - name: Download release.md
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          # 直接从仓库下载自定义的 release.md
+          curl -H "Authorization: token ${PRIVATE_REPO_TOKEN}" \
+               -H "Accept: application/vnd.github.v3.raw" \
+               -o release.md \
+               https://api.github.com/repos/PotatoOfficialTeam/flclash/contents/.github/release.md || echo "# 更新日志" > release.md
+      # - name: Push to telegram
+      #   env:
+      #     TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      #     TAG: ${{ github.ref_name }}
+      #     RUN_ID: ${{ github.run_id }}
+      #   run: |
+      #     python -m pip install --upgrade pip
+      #     pip install requests
+      #     python release_telegram.py
+
+
+      - name: Generate sha256
+        if: env.IS_STABLE == 'true'
+        run: |
+          cd ./dist
+          for file in $(find . -type f -not -name "*.sha256"); do
+            sha256sum "$file" > "${file}.sha256"
+          done  
+      - name: Release
+        if: ${{ env.IS_STABLE == 'true' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./dist/*
+          body_path: './release.md'
+          generate_release_notes: false
+          tag_name: ${{ env.VERSION_TAG || github.ref_name }}
+          name: ${{ env.VERSION_TAG || github.ref_name }}
+
+      # - name: Create Fdroid Source Dir
+      #   if: ${{ env.IS_STABLE == 'true' }}
+      #   run: |
+      #     mkdir -p ./tmp
+      #     cp ./dist/*android-arm64-v8a* ./tmp/ || true
+      #     echo "Files copied successfully"
+
+      # - name: Push to fdroid repo
+      #   if: ${{ env.IS_STABLE == 'true' }}
+      #   uses: cpina/github-action-push-to-another-repository@v1.7.2
+      #   env:
+      #     SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
+      #   with:
+      #     source-directory: ./tmp/
+      #     destination-github-username: chen08209
+      #     destination-repository-name: FlClash-fdroid-repo
+      #     user-name: 'github-actions[bot]'
+      #     user-email: 'github-actions[bot]@users.noreply.github.com'
+      #     target-branch: main
+      #     commit-message: Update from ${{ github.ref_name }}
+      #     target-directory: /tmp/
+
+
